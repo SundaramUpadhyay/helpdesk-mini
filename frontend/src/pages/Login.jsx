@@ -4,6 +4,8 @@ import { authService } from '../services/api';
 
 export default function Login() {
   const navigate = useNavigate();
+  
+  // Form state management
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -12,10 +14,13 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    // Clear error when user starts typing
+    if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
@@ -23,9 +28,21 @@ export default function Login() {
     setIsLoading(true);
     setError('');
 
+    // Basic validation
+    if (!formData.email || !formData.password) {
+      setError('Please fill in all fields');
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      console.log('Attempting login for:', formData.email); // Debug log
       const response = await authService.login(formData.email, formData.password);
+      
+      // Save auth data
       authService.setAuth(response.token, response.user);
+      
+      // Redirect to tickets
       navigate('/tickets');
     } catch (error) {
       setError(error.response?.data?.error?.message || 'Login failed');

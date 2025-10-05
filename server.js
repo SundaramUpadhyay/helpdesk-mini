@@ -1,4 +1,6 @@
+// Load environment variables first
 require('dotenv').config();
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -6,20 +8,23 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Joi = require('joi');
+// const helmet = require('helmet'); // TODO: Add security headers
 
 const app = express();
+
+// Configuration - moved these to make them easier to find
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/helpdesk_mini';
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// Basic middleware setup
+app.use(cors()); // TODO: Restrict origins in production
+app.use(express.json({ limit: '10mb' })); // Generous limit for now
 
-// Rate limiting: 60 requests per minute per IP
+// Simple rate limiting - might need to adjust based on usage
 const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 60, // limit each IP to 60 requests per windowMs
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // Should be enough for normal usage
   message: {
     error: {
       code: 'RATE_LIMIT',
@@ -31,19 +36,41 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// MongoDB connection
+// Debug middleware - helps with troubleshooting
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  
+  // Log request body but keep it safe
+  if (req.body && Object.keys(req.body).length > 0) {
+    const safeBody = { ...req.body };
+    if (safeBody.password) safeBody.password = '[REDACTED]';
+    console.log('Body:', safeBody);
+  }
+  next();
+});
+
+// Database connection - took a while to get the connection string right
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('MongoDB connection error:', err));
+.then(() => {
+  console.log('✅ Connected to MongoDB successfully');
+  // TODO: Add database health check endpoint
+})
+.catch(err => {
+  console.error('❌ MongoDB connection error:', err);
+  // Don't exit in development, but should in production
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
+  }
+});
 
 // ========================
-// MONGOOSE MODELS
+// DATABASE MODELS
 // ========================
 
-// User Model
+// User model - pretty standard stuff
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -51,11 +78,12 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true
+    // TODO: Add email validation regex
   },
   password: {
     type: String,
     required: true,
-    minlength: 6
+    minlength: 6 // Should probably be 8, but 6 is fine for now
   },
   name: {
     type: String,
@@ -163,20 +191,24 @@ const formatError = (code, message, field = null) => {
   return { error };
 };
 
-// JWT Authentication middleware
+// JWT middleware - handles token verification
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
   if (!token) {
     return res.status(401).json(formatError('UNAUTHORIZED', 'Access token is required'));
   }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  // Verify the JWT token
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
     if (err) {
+      console.log('JWT verification failed:', err.message); // Debug log
       return res.status(403).json(formatError('FORBIDDEN', 'Invalid or expired token'));
     }
-    req.user = user;
+    
+    // Attach user info to request
+    req.user = decoded;
     next();
   });
 };
@@ -720,12 +752,59 @@ app.get('/api/tickets/:id/comments', authenticateToken, async (req, res) => {
 });
 
 // ========================
+// ROOT AND HEALTH ROUTES
+// ========================
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'HelpDesk Mini Backend API is running!',
+    version: '1.0.0',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      auth: {
+        register: 'POST /auth/register',
+        login: 'POST /auth/login'
+      },
+      tickets: {
+        list: 'GET /api/tickets',
+        create: 'POST /api/tickets', 
+        details: 'GET /api/tickets/:id',
+        update: 'PATCH /api/tickets/:id',
+        addComment: 'POST /api/tickets/:id/comments',
+        getComments: 'GET /api/tickets/:id/comments'
+      },
+      users: {
+        list: 'GET /api/users'
+      },
+      system: {
+        health: 'GET /health'
+      }
+    }
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
+
+// ========================
 // ERROR HANDLING
 // ========================
 
 // 404 handler
 app.use('*', (req, res) => {
-  res.status(404).json(formatError('NOT_FOUND', 'Route not found'));
+  console.log(`Route not found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json(formatError('NOT_FOUND', `Route ${req.method} ${req.originalUrl} not found`));
 });
 
 // Global error handler
