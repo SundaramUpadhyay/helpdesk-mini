@@ -26,15 +26,12 @@ export default function Register() {
     setError('');
 
     try {
-      const response = await authService.register(
-        formData.name,
-        formData.email,
-        formData.password,
-        formData.role
-      );
+      console.log('Attempting registration with:', formData); // Debug log
+      const response = await authService.register(formData);
       authService.setAuth(response.token, response.user);
       navigate('/tickets');
     } catch (error) {
+      console.error('Registration error:', error); // Debug log
       setError(error.response?.data?.error?.message || 'Registration failed');
     } finally {
       setIsLoading(false);

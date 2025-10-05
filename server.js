@@ -323,8 +323,10 @@ const commentValidationSchema = Joi.object({
 // Register
 app.post('/auth/register', async (req, res) => {
   try {
+    console.log('Registration attempt with body:', req.body); // Debug log
     const { error } = registerSchema.validate(req.body);
     if (error) {
+      console.log('Validation error:', error.details[0].message); // Debug log
       const field = error.details[0].path[0];
       return res.status(400).json(formatError('FIELD_VALIDATION', error.details[0].message, field));
     }
