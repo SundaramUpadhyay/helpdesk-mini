@@ -66,11 +66,19 @@ export const authService = {
     return response.data;
   },
 
-  logout() {
-    // Clear everything
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    // TODO: Call logout endpoint to invalidate token on server
+  async logout() {
+    try {
+      // Call backend logout to track activity and session duration
+      await api.post('/auth/logout');
+      console.log('Logout activity tracked successfully');
+    } catch (error) {
+      console.warn('Failed to track logout activity:', error);
+      // Don't fail logout if tracking fails
+    } finally {
+      // Always clear local storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
   },
 
   getUser() {
@@ -176,6 +184,26 @@ export const ticketService = {
   
   // TODO: Add comment editing
   // TODO: Add comment deletion for admins
+};
+
+// Admin service - for admin-only operations
+export const adminService = {
+  async getLoginActivities(params = {}) {
+    const { limit = 50, offset = 0, userId, action, startDate, endDate } = params;
+    
+    const queryParams = new URLSearchParams({
+      limit: limit.toString(),
+      offset: offset.toString()
+    });
+    
+    if (userId) queryParams.append('userId', userId);
+    if (action) queryParams.append('action', action);
+    if (startDate) queryParams.append('startDate', startDate);
+    if (endDate) queryParams.append('endDate', endDate);
+    
+    const response = await api.get(`/api/admin/login-activities?${queryParams}`);
+    return response.data;
+  }
 };
 
 // Export the axios instance for direct use if needed

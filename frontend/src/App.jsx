@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Tickets from './pages/Tickets';
 import NewTicket from './pages/NewTicket';
 import TicketDetail from './pages/TicketDetail';
+import LoginActivities from './pages/LoginActivities';
 
 // Private Route Component
 function PrivateRoute({ children }) {
@@ -44,6 +45,7 @@ function App() {
           <Route path="tickets" element={<Tickets />} />
           <Route path="tickets/new" element={<NewTicket />} />
           <Route path="tickets/:id" element={<TicketDetail />} />
+          <Route path="admin/activities" element={<LoginActivities />} />
         </Route>
 
         {/* Catch all route */}

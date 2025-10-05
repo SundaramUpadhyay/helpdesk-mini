@@ -1,20 +1,25 @@
 import React from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { authService } from '../services/api';
 import { 
   TicketIcon, 
   UserIcon, 
-  ArrowRightOnRectangleIcon 
+  ArrowRightOnRectangleIcon,
+  ChartBarIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 
 export default function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = authService.getUser();
 
-  const handleLogout = () => {
-    authService.logout();
+  const handleLogout = async () => {
+    await authService.logout();
     navigate('/login');
   };
+
+  const isActive = (path) => location.pathname === path;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -22,12 +27,53 @@ export default function Layout() {
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
+            <div className="flex items-center space-x-8">
               <div className="flex-shrink-0 flex items-center">
                 <TicketIcon className="h-8 w-8 text-primary-600" />
                 <span className="ml-2 text-xl font-bold text-gray-900">
                   HelpDesk Mini
                 </span>
+              </div>
+              
+              {/* Navigation Links */}
+              <div className="hidden md:flex space-x-6">
+                <Link
+                  to="/tickets"
+                  className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    isActive('/tickets') 
+                      ? 'bg-primary-100 text-primary-700' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <TicketIcon className="h-4 w-4 mr-2" />
+                  All Tickets
+                </Link>
+                
+                <Link
+                  to="/tickets/new"
+                  className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    isActive('/tickets/new') 
+                      ? 'bg-primary-100 text-primary-700' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  New Ticket
+                </Link>
+                
+                {user?.role === 'admin' && (
+                  <Link
+                    to="/admin/activities"
+                    className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                      isActive('/admin/activities') 
+                        ? 'bg-primary-100 text-primary-700' 
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    <ChartBarIcon className="h-4 w-4 mr-2" />
+                    Login Activities
+                  </Link>
+                )}
               </div>
             </div>
             

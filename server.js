@@ -180,6 +180,41 @@ const commentSchema = new mongoose.Schema({
 
 const Comment = mongoose.model('Comment', commentSchema);
 
+// Login Activity Schema - tracks user login/logout events
+const loginActivitySchema = new mongoose.Schema({
+  userId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  email: { 
+    type: String, 
+    required: true 
+  },
+  action: { 
+    type: String, 
+    enum: ['login', 'logout'], 
+    required: true 
+  },
+  timestamp: { 
+    type: Date, 
+    default: Date.now 
+  },
+  ipAddress: { 
+    type: String 
+  },
+  userAgent: { 
+    type: String 
+  },
+  sessionDuration: { 
+    type: Number // in minutes, for logout events
+  }
+}, { 
+  timestamps: true 
+});
+
+const LoginActivity = mongoose.model('LoginActivity', loginActivitySchema);
+
 // ========================
 // MIDDLEWARE FUNCTIONS
 // ========================
@@ -349,6 +384,21 @@ app.post('/auth/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    // Track login activity
+    try {
+      await LoginActivity.create({
+        userId: user._id,
+        email: user.email,
+        action: 'login',
+        ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
+        userAgent: req.headers['user-agent']
+      });
+      console.log(`Login activity tracked for ${email}`);
+    } catch (activityError) {
+      console.error('Failed to log login activity:', activityError);
+      // Don't fail login if activity logging fails
+    }
+
     res.json({
       message: 'Login successful',
       token,
@@ -362,6 +412,42 @@ app.post('/auth/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json(formatError('INTERNAL_ERROR', 'Internal server error'));
+  }
+});
+
+// Logout endpoint - tracks logout activity and session duration
+app.post('/auth/logout', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const email = req.user.email;
+    
+    // Find the last login to calculate session duration
+    const lastLogin = await LoginActivity.findOne({
+      userId,
+      action: 'login'
+    }).sort({ timestamp: -1 });
+
+    let sessionDuration = 0;
+    if (lastLogin) {
+      sessionDuration = Math.floor((Date.now() - lastLogin.timestamp) / (1000 * 60)); // minutes
+    }
+
+    // Track logout activity
+    await LoginActivity.create({
+      userId,
+      email,
+      action: 'logout',
+      ipAddress: req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'],
+      userAgent: req.headers['user-agent'],
+      sessionDuration
+    });
+
+    console.log(`Logout activity tracked for ${email}, session duration: ${sessionDuration} minutes`);
+    res.json({ message: 'Logged out successfully', sessionDuration });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json(formatError('INTERNAL_ERROR', 'Logout failed'));
   }
 });
 
@@ -748,6 +834,53 @@ app.get('/api/tickets/:id/comments', authenticateToken, async (req, res) => {
       return res.status(400).json(formatError('INVALID_ID', 'Invalid ticket ID'));
     }
     res.status(500).json(formatError('INTERNAL_ERROR', 'Internal server error'));
+  }
+});
+
+// ========================
+// ADMIN ROUTES
+// ========================
+
+// Get login activities (admin only)
+app.get('/api/admin/login-activities', authenticateToken, requireRole(['admin']), async (req, res) => {
+  try {
+    const { limit = 50, offset = 0, userId, action, startDate, endDate } = req.query;
+
+    // Build query filters
+    const query = {};
+    if (userId) query.userId = userId;
+    if (action) query.action = action;
+    
+    // Date range filter
+    if (startDate || endDate) {
+      query.timestamp = {};
+      if (startDate) query.timestamp.$gte = new Date(startDate);
+      if (endDate) query.timestamp.$lte = new Date(endDate);
+    }
+
+    const activities = await LoginActivity.find(query)
+      .populate('userId', 'name email role')
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
+
+    const total = await LoginActivity.countDocuments(query);
+
+    console.log(`Admin ${req.user.email} requested login activities, found ${activities.length} records`);
+
+    res.json({
+      activities,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: offset + limit < total
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching login activities:', error);
+    res.status(500).json(formatError('INTERNAL_ERROR', 'Failed to fetch login activities'));
   }
 });
 
